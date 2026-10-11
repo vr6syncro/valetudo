@@ -3,6 +3,7 @@ name: Build Valetudo RE ARMv7 (Gen1)
 on:
   push:
     branches:
+      - testing
       - 'build/**'
   workflow_dispatch:
 
