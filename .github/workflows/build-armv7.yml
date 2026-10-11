@@ -1,0 +1,56 @@
+name: Build Valetudo RE ARMv7 (Gen1)
+
+on:
+  push:
+    branches:
+      - 'build/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js build host
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate STATUS response handling
+        run: npm test
+
+      - name: Install build dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build ARMv7 binary using upstream pkg target
+        run: npm run build
+
+      - name: Inspect output and generate checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s valetudo
+          file valetudo | tee FILE-INFO.txt
+          readelf -h valetudo | tee ELF-HEADER.txt
+          readelf -h valetudo | grep -E 'Machine:.*ARM'
+          readelf -l valetudo | tee ELF-PROGRAM-HEADERS.txt
+          sha256sum valetudo > SHA256SUMS
+
+      - name: Upload unsigned binary for manual validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: valetudo-re-v1-armv7-${{ github.sha }}
+          path: |
+            valetudo
+            SHA256SUMS
+            FILE-INFO.txt
+            ELF-HEADER.txt
+            ELF-PROGRAM-HEADERS.txt
+          if-no-files-found: error
+          retention-days: 14
