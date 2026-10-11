@@ -25,6 +25,10 @@ jobs:
       - name: Validate STATUS response handling
         run: npm test
 
+      - name: Check German and Traditional Chinese translations
+        run: |
+          node -e 'for (const p of ["client/locales/de.json", "client/locales/tw.json"]) { const d = require("./" + p); if (!d || typeof d !== "object") process.exit(1); console.log("Validated:", p); }'
+
       - name: Install build dependencies
         run: npm install --no-audit --no-fund
 
