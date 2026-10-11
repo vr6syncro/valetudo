@@ -1,0 +1,87 @@
+name: Build Valetudo RE ARMv7 (Gen1)
+
+on:
+  push:
+    branches:
+      - testing
+      - 'build/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js build host
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate STATUS response handling
+        run: npm test
+
+      - name: Check German and Traditional Chinese translations
+        run: |
+          node -e 'for (const p of ["client/locales/de.json", "client/locales/tw.json"]) { const d = require("./" + p); if (!d || typeof d !== "object") process.exit(1); console.log("Validated:", p); }'
+
+      - name: Install build dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Stamp unique fork build identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("fs");
+          const file = "package.json";
+          const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
+          const sha = process.env.GITHUB_SHA;
+          if (!/^[0-9a-f]{40}$/.test(sha || "")) {
+              throw new Error("Expected complete GITHUB_SHA for unique build identity");
+          }
+          pkg.versionSuffix = "+vr6syncro." + sha.slice(0, 12);
+          fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\n");
+          console.log("Building:", pkg.version + pkg.versionSuffix);
+          NODE
+
+      - name: Build ARMv7 binary using upstream pkg target
+        run: npm run build
+
+      - name: Inspect output and generate checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s valetudo
+          file valetudo | tee FILE-INFO.txt
+          readelf -h valetudo | tee ELF-HEADER.txt
+          readelf -h valetudo | grep -E 'Machine:.*ARM'
+          readelf -l valetudo | tee ELF-PROGRAM-HEADERS.txt
+          sha256sum valetudo > SHA256SUMS
+          {
+            echo "Repository: ${GITHUB_REPOSITORY}"
+            echo "Commit: ${GITHUB_SHA}"
+            echo "Run ID: ${GITHUB_RUN_ID}"
+            echo "Git ref: ${GITHUB_REF}"
+            echo "Reported version: $(node -p 'const p = require("./package.json"); p.version + p.versionSuffix')"
+          } > BUILD-INFO.txt
+
+
+      - name: Upload unsigned binary for manual validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: valetudo-re-v1-armv7-${{ github.sha }}
+          path: |
+            valetudo
+            SHA256SUMS
+            BUILD-INFO.txt
+            FILE-INFO.txt
+            ELF-HEADER.txt
+            ELF-PROGRAM-HEADERS.txt
+          if-no-files-found: error
+          retention-days: 14
